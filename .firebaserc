@@ -1,0 +1,12 @@
+{
+  "projects": {
+    "default": "stmary-stdemiana"
+  },
+  "targets": {
+    "stmary-stdemiana": {
+      "hosting": {
+        "web": ["stmaryandstdemiana-web"]
+      }
+    }
+  }
+}

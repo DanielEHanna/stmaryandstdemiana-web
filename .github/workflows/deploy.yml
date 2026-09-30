@@ -1,0 +1,65 @@
+name: Deploy
+
+# Step 1: live deploys from main only. Preview channels on pull requests
+# come in step 3 (see KNOWN_GAPS.md).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-live
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write   # needed to mint the GitHub OIDC token for WIF
+
+env:
+  FIREBASE_TOOLS_VERSION: 15.32.0   # exact pin; bump deliberately
+  PROJECT: stmary-stdemiana
+  SITE_URL: https://stmaryandstdemiana-web.web.app
+  WIF_PROVIDER: projects/907000223329/locations/global/workloadIdentityPools/github/providers/stmaryandstdemiana-web
+  SERVICE_ACCOUNT: hosting-deployer@stmary-stdemiana.iam.gserviceaccount.com
+
+jobs:
+  deploy-live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.SERVICE_ACCOUNT }}
+          create_credentials_file: true
+
+      - name: Install firebase-tools (pinned)
+        run: npm install --global "firebase-tools@${FIREBASE_TOOLS_VERSION}"
+
+      - name: Deploy to live (target "web" only — never the default site)
+        run: firebase deploy --only hosting:web --project "$PROJECT" --non-interactive
+
+      # "I deployed it" is not "it's live". Fetch the page from the public URL
+      # and require it to be byte-identical to the file in this commit.
+      - name: Verify the live site serves this commit's index.html
+        run: |
+          set -euo pipefail
+          expected=$(sha256sum public/index.html | cut -d' ' -f1)
+          for attempt in 1 2 3 4 5 6; do
+            actual=$(curl -fsS "$SITE_URL/?verify=$GITHUB_SHA" | sha256sum | cut -d' ' -f1)
+            if [ "$actual" = "$expected" ]; then
+              echo "Live site matches commit $GITHUB_SHA"
+              curl -sSI "$SITE_URL/"
+              exit 0
+            fi
+            echo "attempt $attempt: live=$actual expected=$expected; retrying"
+            sleep 10
+          done
+          echo "::error::Live site does not serve this commit's index.html"
+          exit 1
