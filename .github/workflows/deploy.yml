@@ -1,39 +1,70 @@
-name: Deploy
+name: Site
 
-# Step 1: live deploys from main only. Preview channels on pull requests
-# come in step 3 (see KNOWN_GAPS.md).
+# checks  - every pull request and every push to main
+# preview - pull requests from this repository: deploy to channel pr-<n>,
+#           verify it from its public URL, run Lighthouse
+# live    - main only: deploy to the live channel, verify it from the
+#           public URL. Nothing reaches live without passing checks.
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
 
-concurrency:
-  group: deploy-live
-  cancel-in-progress: false
-
 permissions:
   contents: read
-  id-token: write   # needed to mint the GitHub OIDC token for WIF
 
 env:
-  FIREBASE_TOOLS_VERSION: 15.32.0   # exact pin; bump deliberately
+  # Exact pins; bump deliberately, in their own commit.
+  FIREBASE_TOOLS_VERSION: 15.32.0
+  VNU_JAR_VERSION: 26.10.2
+  LIGHTHOUSE_VERSION: 13.5.0
   PROJECT: project-b14e4945-5820-4d6e-808
   SITE_URL: https://stmaryandstdemiana-church.web.app
   WIF_PROVIDER: projects/117952545675/locations/global/workloadIdentityPools/church-website-github/providers/stmaryandstdemiana-web
   SERVICE_ACCOUNT: church-website-deployer@project-b14e4945-5820-4d6e-808.iam.gserviceaccount.com
 
 jobs:
-  deploy-live:
-    runs-on: ubuntu-latest
+  checks:
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/setup-node@v4
+      - name: Static checks (JS, ids, CSS classes, links, shared markup, asset stamps)
+        run: python3 scripts/check_site.py
+
+      - name: Cache-busting self-test (stamps move exactly when files change)
+        run: python3 scripts/test_stamp_assets.py
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
 
-      - id: auth
-        uses: google-github-actions/auth@v2
+      - name: Validate HTML (Nu Html Checker)
+        run: |
+          npm install --no-save --no-audit --no-fund "vnu-jar@${VNU_JAR_VERSION}"
+          java -jar node_modules/vnu-jar/build/dist/vnu.jar --errors-only public/*.html
+
+  preview:
+    needs: checks
+    # Forks get no OIDC token, and the WIF provider only trusts this repository anyway.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: preview-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ env.WIF_PROVIDER }}
           service_account: ${{ env.SERVICE_ACCOUNT }}
@@ -42,24 +73,65 @@ jobs:
       - name: Install firebase-tools (pinned)
         run: npm install --global "firebase-tools@${FIREBASE_TOOLS_VERSION}"
 
-      - name: Deploy to live (target "web" only — never the default site)
-        run: firebase deploy --only hosting:web --project "$PROJECT" --non-interactive
-
-      # "I deployed it" is not "it's live". Fetch the page from the public URL
-      # and require it to be byte-identical to the file in this commit.
-      - name: Verify the live site serves this commit's index.html
+      - name: Deploy preview channel pr-${{ github.event.pull_request.number }}
+        id: deploy
         run: |
           set -euo pipefail
-          expected=$(sha256sum public/index.html | cut -d' ' -f1)
-          for attempt in 1 2 3 4 5 6; do
-            actual=$(curl -fsS "$SITE_URL/?verify=$GITHUB_SHA" | sha256sum | cut -d' ' -f1)
-            if [ "$actual" = "$expected" ]; then
-              echo "Live site matches commit $GITHUB_SHA"
-              curl -sSI "$SITE_URL/"
-              exit 0
-            fi
-            echo "attempt $attempt: live=$actual expected=$expected; retrying"
-            sleep 10
+          firebase hosting:channel:deploy "pr-${{ github.event.pull_request.number }}" \
+            --only web --expires 7d --project "$PROJECT" --json > deploy.json
+          url=$(jq -r '.result[].url' deploy.json)
+          if [ -z "$url" ] || [ "$url" = "null" ]; then
+            echo "::error::No preview URL in firebase output"; cat deploy.json; exit 1
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "### Preview: $url" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify the preview from its public URL (content + Cache-Control)
+        run: python3 scripts/verify_deploy.py "${{ steps.deploy.outputs.url }}"
+
+      - name: Lighthouse (home and services, mobile and desktop)
+        run: |
+          set -euo pipefail
+          for path in / /services; do
+            for preset in mobile desktop; do
+              name="lh-$(echo "$path" | tr -c 'a-z' '_')-$preset.json"
+              extra=""; [ "$preset" = desktop ] && extra="--preset=desktop"
+              npx -y "lighthouse@${LIGHTHOUSE_VERSION}" "${{ steps.deploy.outputs.url }}$path" $extra \
+                --only-categories=performance,accessibility,best-practices,seo \
+                --chrome-flags="--headless=new" --output=json --output-path="$name" --quiet
+            done
           done
-          echo "::error::Live site does not serve this commit's index.html"
-          exit 1
+          python3 scripts/lighthouse_summary.py lh-*.json
+
+  live:
+    needs: checks
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: deploy-live
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.SERVICE_ACCOUNT }}
+          create_credentials_file: true
+
+      - name: Install firebase-tools (pinned)
+        run: npm install --global "firebase-tools@${FIREBASE_TOOLS_VERSION}"
+
+      - name: Deploy to live (target "web" only, never the default site)
+        run: firebase deploy --only hosting:web --project "$PROJECT" --non-interactive
+
+      # "I deployed it" is not "it's live".
+      - name: Verify the live site from its public URL (content + Cache-Control)
+        run: python3 scripts/verify_deploy.py "$SITE_URL"

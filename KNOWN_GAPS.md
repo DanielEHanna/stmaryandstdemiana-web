@@ -7,30 +7,24 @@ rather than quietly leaving things out.
 
 - **Every page is `noindex`.** Deliberate while placeholders are visible;
   remove at launch, together with a zero-placeholder check.
-- **No preview channels yet.** Pull requests deploy nothing; only `main`
-  deploys, straight to live (step 3).
-- **Caching is an interim `no-cache` on everything**, CSS, JS, fonts and
-  images included. That is correct (browsers always revalidate, so a fix is
-  never served stale) but slower than necessary: every page view
-  revalidates every asset. Step 3 replaces it with content-hashed asset
-  names cached `immutable` for a year, HTML staying `no-cache`.
-- **Node 20 actions and `ubuntu-latest`.** GitHub warns that
-  `actions/checkout@v4`, `actions/setup-node@v4` and
-  `google-github-actions/auth@v2` run on deprecated Node 20, and that
-  `ubuntu-latest` moves to Ubuntu 26 from 19 Oct 2026. Bump the actions and
-  pin the runner image in step 3.
-- **No CI checks** (duplicate functions, missing ids/classes, broken links,
-  HTML validation, Lighthouse) yet (step 3). Until then the only checks are
-  the ones run by hand before each push.
-- **Actions are pinned by major tag (`@v4`, `@v2`), not commit SHA.**
-  firebase-tools is pinned exactly; the actions are not. Could not look up
-  SHAs from the build session.
-- **Any branch in this repo can currently obtain the deploy identity.** The
-  WIF provider only accepts tokens from this repository, but does not check
-  the branch, and Hosting Admin can release to live. Someone with push access
-  could edit the workflow on a branch and deploy. Decide in step 3 whether to
-  restrict live deploys to `refs/heads/main` (e.g. a separate SA bound on
-  `attribute.ref`) and protect `main`.
+- **Preview URLs are public.** Each pull request deploys to
+  `stmaryandstdemiana-church--pr-<n>-<hash>.web.app` for 7 days. Anyone with
+  the link can see unreleased pages; they are `noindex` but not private.
+- **Assets are cached for a year by URL; the safety net is the stamp check.**
+  `/assets/**` is `public, max-age=31536000, immutable`, which is only safe
+  because every reference carries a `?v=` content hash that CI verifies.
+  A reference added without a stamp would also be cached for a year
+  unchanged: `check_site.py` fails on it, so it cannot reach `main`.
+- **Lighthouse performance is reported, not enforced.** Shared CI runners
+  vary too much for a hard floor; accessibility is enforced (>= 95).
+- **Any branch in this repo can obtain the deploy identity, and that
+  identity can release to live.** Preview deploys need the same Hosting
+  Admin role as live ones (IAM cannot limit a role to preview channels), so
+  splitting into two service accounts would not stop a pull request from
+  publishing to live. The workflow only deploys live from `main`, but
+  someone with push access could change the workflow on a branch. The real
+  controls are who has write access to this repository and a protected
+  `main` branch (not yet set; a GitHub setting, not code).
 - **WIF condition matches the repository by name, not numeric id.** If this
   repo were deleted and someone recreated the same name under this account,
   the condition would match. Low risk (same owner); could switch to
@@ -65,10 +59,11 @@ rather than quietly leaving things out.
   Everything else (service times, address and Eircode, contact email,
   clergy, ministries and age groups, diocese name, visiting guidance) shows
   as a dashed `[PLACEHOLDER]`.
-- **The design system holds details not yet confirmed here.** Its notes
-  list service times, an address, a contact email, a priest's name, a
-  Scouts group and the diocese's wording, some taken from the 2021 Google
-  Site. None is published until confirmed for step 5.
+- **Confirmed on 2 Oct 2026, not yet published (step 5):** the service
+  times, the address at 4-5 The Pines, Herbert Road, Bray,
+  contact-us@stmaryandstdemiana.ie, Fr. Theophilous Avamina, the 20th
+  Wicklow Scouts, and the diocese's name as written on the logo. The
+  Eircode and a public phone number are still unconfirmed.
 - **The Ethiopian Orthodox Tewahedo line is left out on purpose**, at the
   parish's request, although the design system suggests it.
 - **Term explanations need clergy review.** "Divine Liturgy", "Coptic",
@@ -108,5 +103,8 @@ rather than quietly leaving things out.
   design asks for both. The menu is a native `<details>` so it works without
   JavaScript; trapping focus would need more script.
 - **Header and footer are copied into every page** (no build step). A change
-  must be made in all ten files; a step 3 check should fail if they drift.
+  must be made in all ten files; `check_site.py` fails if any page differs.
 - **No structured data, Open Graph image, sitemap or `robots.txt` yet.**
+- **No Content-Security-Policy header.** Everything is self-hosted, so a
+  strict one is easy to add; deferred so it can be tested on a preview
+  first. `nosniff` and a `Referrer-Policy` are set.
