@@ -19,8 +19,7 @@ env:
   FIREBASE_TOOLS_VERSION: 15.32.0   # exact pin; bump deliberately
   PROJECT: project-b14e4945-5820-4d6e-808
   SITE_URL: https://stmaryandstdemiana-church.web.app
-  # Filled in from bootstrap-wif.sh output; auth fails loudly until then.
-  WIF_PROVIDER: projects/PROJECT_NUMBER_FROM_BOOTSTRAP/locations/global/workloadIdentityPools/church-website-github/providers/stmaryandstdemiana-web
+  WIF_PROVIDER: projects/117952545675/locations/global/workloadIdentityPools/church-website-github/providers/stmaryandstdemiana-web
   SERVICE_ACCOUNT: church-website-deployer@project-b14e4945-5820-4d6e-808.iam.gserviceaccount.com
 
 jobs:
