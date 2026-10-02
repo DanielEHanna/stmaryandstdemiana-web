@@ -1,11 +1,11 @@
 {
   "projects": {
-    "default": "stmary-stdemiana"
+    "default": "project-b14e4945-5820-4d6e-808"
   },
   "targets": {
-    "stmary-stdemiana": {
+    "project-b14e4945-5820-4d6e-808": {
       "hosting": {
-        "web": ["stmaryandstdemiana-web"]
+        "web": ["stmaryandstdemiana-church"]
       }
     }
   }

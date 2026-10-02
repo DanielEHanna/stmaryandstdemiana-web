@@ -27,13 +27,30 @@ rather than quietly leaving things out.
   repo were deleted and someone recreated the same name under this account,
   the condition would match. Low risk (same owner); could switch to
   `repository_id`.
+- **The site ID is `stmaryandstdemiana-church`**, because
+  `stmaryandstdemiana-web` is now taken globally by the empty site in
+  `stmary-stdemiana`. It only shows in the temporary `.web.app` URL.
 - **Deploy-SA roles are unverified.** `firebasehosting.admin` +
   `serviceusage.serviceUsageConsumer` is believed sufficient for
   `firebase deploy --only hosting`; confirmed only once the first deploy
   succeeds.
-- **The default site is untouched on purpose.** `stmary-stdemiana` still
-  serves the dead Dynamic Links config on `link.stmaryandstdemiana.ie`
-  (HTTP 400). What to do with it is an open decision.
+- **Hosted in the Sunday School portal's project, not the church's.** The
+  church's own project (`stmary-stdemiana`) could not be used: the only
+  account available lacks permission to grant IAM roles there, and its
+  Owner (`it@stmaryandstdemiana.ie`) was not reachable. This reverses the
+  original rule that the two share nothing. Mitigations: the site has its
+  own deploy service account (Hosting roles only), its own Workload Identity
+  pool, and its own Hosting site; it cannot reach the portal's Cloud Run,
+  Cloud SQL or data. Remaining risk: a project Owner/Editor of one is an
+  Owner/Editor of both, and the church's public website depends on a
+  personal organisation. Plan to move it to a church-owned project once
+  that project's Owner is reachable.
+- **Leftovers in `stmary-stdemiana` from the first attempt.** An empty
+  Hosting site `stmaryandstdemiana-web` and a service account
+  `hosting-deployer` with no roles. Harmless; delete or reuse later.
+- **`link.stmaryandstdemiana.ie` is untouched on purpose.** It still sits on
+  the default site of `stmary-stdemiana`, serving the dead Dynamic Links
+  config (HTTP 400). What to do with it is an open decision.
 - **No custom domain.** `stmaryandstdemiana.ie` / `www` do not resolve (step 4).
 
 ## Content
