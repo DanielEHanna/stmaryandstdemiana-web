@@ -93,9 +93,11 @@ rather than quietly leaving things out.
 - **No Privacy, Cookie or Safeguarding pages**, so the footer links the
   design shows are left out. Needed before launch; the site sets no cookies
   today.
-- **No favicon.** `/favicon.ico` returns 404. The design system says to ask
-  the church for a small-size mark rather than crop the logo, so none is
-  made up here.
+- **The favicon is the whole logo shrunk down**, taken from the previous
+  site (16, 32 and 180px, plus `/favicon.ico`). It fixes the 404 but is not
+  legible at tab size. A simplified small mark from the church would be
+  better; the previous site's `icon.svg` (a vector trace of the logo) is a
+  starting point.
 - **The logo is only legible at large sizes.** Resized copies of the
   supplied PNG (no cropping or recolouring) at 112, 176 and 352px. At 48-56px
   in the header the lettering cannot be read; a simplified mark would help.
@@ -104,7 +106,11 @@ rather than quietly leaving things out.
   JavaScript; trapping focus would need more script.
 - **Header and footer are copied into every page** (no build step). A change
   must be made in all ten files; `check_site.py` fails if any page differs.
-- **No structured data, Open Graph image, sitemap or `robots.txt` yet.**
+- **No structured data, sitemap or `robots.txt` yet.**
+- **The share image URL names the temporary `.web.app` address.** `og:image`
+  must be absolute; switch it to `stmaryandstdemiana.ie` once the custom
+  domain is live (step 4). It is the logo on white (1200x628) from the
+  previous site; a photo of the church would make a better share image.
 - **No Content-Security-Policy header.** Everything is self-hosted, so a
   strict one is easy to add; deferred so it can be tested on a preview
   first. `nosniff` and a `Referrer-Policy` are set.
